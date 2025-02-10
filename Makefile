@@ -1,6 +1,3 @@
-prepare:
-	git submodule add https://github.com/tevador/equix.git
-	
 lint:
 	golangci-lint -v run ./...
 

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	_ "pow/internal/equix"
+	_ "pow/internal/hashchash"
 )
 
 func main() {
