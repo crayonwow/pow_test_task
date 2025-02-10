@@ -4,23 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/umahmood/hashcash"
 
-	"pow/internal/pow"
+	localErr "pow/internal/errors"
 )
-
-// var defaultPow = New(newInMemmoryStorage(), Confing{
-// 	Expiration: 3600,
-// })
 
 func New(storage Storage, config Confing) *Pow {
 	return &Pow{
 		storage:    storage,
 		expiration: config.Expiration,
-		difficulty: config.Difficulty,
 	}
 }
 
@@ -36,8 +30,6 @@ type Pow struct {
 
 	// expiration is read only
 	expiration int64
-
-	difficulty int64
 }
 
 // we consider that all data is valid
@@ -45,8 +37,8 @@ func validator(_ string) bool {
 	return true
 }
 
-func (p *Pow) Solve(ctx context.Context, challenge []byte) ([]byte, error) {
-	hc, err := p.new(challenge)
+func (p *Pow) Solve(ctx context.Context, challenge []byte, difficulty int64) ([]byte, error) {
+	hc, err := p.new(challenge, difficulty)
 	if err != nil {
 		return nil, fmt.Errorf("new: %w", err)
 	}
@@ -71,34 +63,26 @@ func (p *Pow) Solve(ctx context.Context, challenge []byte) ([]byte, error) {
 	return []byte(solution), nil
 }
 
-func (p *Pow) Verify(solution []byte) (bool, error) {
-	hc, err := p.new(solution)
+func (p *Pow) Verify(solution []byte, difficulty int64) (bool, error) {
+	hc, err := p.new(solution, difficulty)
 	if err != nil {
 		return false, fmt.Errorf("new: %w", err)
 	}
 	valid, err := hc.Verify(string(solution))
 	if err != nil {
-		return false, pow.ErrUnexpected
+		return false, localErr.ErrUnexpected
 	}
 
 	return valid, nil
 }
 
-func (p *Pow) IncDifficulty() {
-	atomic.AddInt64(&p.difficulty, 1)
-}
-
-func (p *Pow) SetDifficulty(difficulty int64) {
-	atomic.StoreInt64(&p.difficulty, difficulty)
-}
-
-func (p *Pow) new(data []byte) (*hashcash.Hashcash, error) {
+func (p *Pow) new(data []byte, difficulty int64) (*hashcash.Hashcash, error) {
 	r := &hashcash.Resource{
 		Data:          string(data),
 		ValidatorFunc: validator,
 	}
 	c := &hashcash.Config{
-		Bits:    int(atomic.LoadInt64(&p.difficulty)),
+		Bits:    int(difficulty),
 		Expired: time.Now().Add(time.Second * time.Duration(p.expiration)),
 		Future:  time.Now().Add(time.Hour * 48),
 		Storage: p.storage,
@@ -106,7 +90,7 @@ func (p *Pow) new(data []byte) (*hashcash.Hashcash, error) {
 	hc, err := hashcash.New(r, c)
 	if err != nil {
 		if errors.Is(err, hashcash.ErrResourceFail) {
-			return nil, pow.ErrInvalid
+			return nil, localErr.ErrInvalid
 		}
 		return nil, fmt.Errorf("failed to create hashcash: %w", err)
 
