@@ -11,8 +11,6 @@ import (
 
 	"pow/internal/api/tcp"
 	"pow/internal/pow/hashchash"
-	"pow/internal/protection"
-	"pow/internal/wisdom"
 )
 
 func init() {
@@ -20,9 +18,7 @@ func init() {
 }
 
 type Config struct {
-	HashCash  hashchash.Confing `json:"hash_cash"`
-	Protector protection.Config `json:"protector"`
-	TCPServer tcp.Config        `json:"tcp_server"`
+	TCPServerHost tcp.Config `json:"tcp_server"`
 }
 
 func newConfigFromFile(path string) (Config, error) {
@@ -44,7 +40,7 @@ func newConfigFromFile(path string) (Config, error) {
 }
 
 func main() {
-	cfgPath := os.Getenv("POW_SERVER_CONFIG_PATH")
+	cfgPath := os.Getenv("POW_CLIENT_CONFIG_PATH")
 	if cfgPath == "" {
 		slog.Error("empty config path")
 		os.Exit(1)
@@ -56,29 +52,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := hashchash.New(hashchash.NewInMemmoryStorage(), cfg.HashCash)
-	ws := wisdom.NewService(wisdom.NewInMemmoryRepository())
-	p := protection.NewProtector(cfg.Protector, h)
-	processors := []*tcp.Processor{
-		{
-			TypeRequest:  tcp.MessageTypeGetChallengeRequest,
-			TypeResponse: tcp.MessageTypeGetChallengeResponse,
-			Processor:    p.ProcessorGenerateChallenge,
-			Protected:    false,
-		},
-		{
-			TypeRequest:  tcp.MessageTypeGetWisdomRequest,
-			TypeResponse: tcp.MessageTypeGetWisdomResponse,
-			Processor:    ws.ProcessorGet,
-			Protected:    true,
-		},
-	}
-
-	c := tcp.NewController(processors)
-	s := tcp.NewServer(cfg.TCPServer, c)
-
+	h := hashchash.New(hashchash.NewMockStorage(), hashchash.Confing{})
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
 
-	s.Start(ctx)
+	c, err := tcp.NewClient(cfg.TCPServerHost, h)
+	if err != nil {
+		slog.Error("new client", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer c.Close()
+	wisdom, err := c.GetWisdom(ctx)
+	if err != nil {
+		slog.Error("get wisdom", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	slog.Error("success", slog.String("wisdom", wisdom))
 }

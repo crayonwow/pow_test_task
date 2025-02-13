@@ -4,22 +4,22 @@ import (
 	"sync"
 )
 
-func newInMemmoryStorage() *inMemmoryStorage {
-	return &inMemmoryStorage{
-		m: sync.Map{},
+func NewInMemmoryStorage() *InMemmoryStorage {
+	return &InMemmoryStorage{
+		m: &sync.Map{},
 	}
 }
 
-type inMemmoryStorage struct {
-	m sync.Map
+type InMemmoryStorage struct {
+	m *sync.Map
 }
 
-func (in *inMemmoryStorage) Add(resource string) error {
+func (in *InMemmoryStorage) Add(resource string) error {
 	in.m.Store(resource, struct{}{})
 	return nil
 }
 
-func (in *inMemmoryStorage) Spent(resource string) bool {
+func (in *InMemmoryStorage) Spent(resource string) bool {
 	_, ok := in.m.Load(resource)
 	return ok
 }

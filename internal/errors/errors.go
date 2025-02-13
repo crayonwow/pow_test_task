@@ -5,6 +5,7 @@ import (
 )
 
 var (
+	ErrNotFound   = errors.New("not found")
 	ErrInvalid    = errors.New("invalid")
 	ErrUnexpected = errors.New("unexpected")
 )

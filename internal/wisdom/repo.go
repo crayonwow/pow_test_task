@@ -1,7 +1,17 @@
 package wisdom
 
+import (
+	"context"
+	"math/rand"
+)
+
 type InMemmoryRepoository struct {
 	list []string
+}
+
+func (in *InMemmoryRepoository) Get(_ context.Context) (string, error) {
+	n := rand.Intn(len(in.list))
+	return in.list[n], nil
 }
 
 func NewInMemmoryRepository() *InMemmoryRepoository {
