@@ -13,10 +13,6 @@ import (
 	"pow/internal/pow/hashchash"
 )
 
-func init() {
-	slog.SetLogLoggerLevel(slog.LevelDebug.Level())
-}
-
 type Config struct {
 	TCPServerHost tcp.Config `json:"tcp_server"`
 }
@@ -45,12 +41,24 @@ func main() {
 		slog.Error("empty config path")
 		os.Exit(1)
 	}
+	isDebug := os.Getenv("POW_CLIENT_DEBUG")
+	if isDebug == "1" {
+		slog.SetLogLoggerLevel(slog.LevelDebug.Level())
+	}
+	slog.Debug(
+		"found config file",
+		slog.String("path", cfgPath),
+	)
 
 	cfg, err := newConfigFromFile(cfgPath)
 	if err != nil {
 		slog.Error("new config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	slog.Debug(
+		"loaded config file",
+		"cfg", cfg,
+	)
 
 	h := hashchash.New(hashchash.NewMockStorage(), hashchash.Confing{})
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
@@ -62,11 +70,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer c.Close()
+	slog.Debug("created client")
 	wisdom, err := c.GetWisdom(ctx)
 	if err != nil {
 		slog.Error("get wisdom", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	slog.Error("success", slog.String("wisdom", wisdom))
+	slog.Info("success", slog.String("wisdom", wisdom))
 }

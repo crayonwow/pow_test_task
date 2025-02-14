@@ -1,11 +1,13 @@
 package tcp
 
 import (
-	"encoding/binary"
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 )
 
 const (
@@ -30,9 +32,8 @@ type (
 	MessageTypeV1 uint32
 
 	MessageV1 struct {
-		Type       MessageTypeV1
-		DataLenght uint32 // Lenght of data
-		Data       data
+		Type MessageTypeV1
+		Data data
 	}
 
 	WisdomMessageV1 string
@@ -41,58 +42,43 @@ type (
 func (m *MessageV1) clear() {
 	m.Data.Headers = map[string]string{}
 	m.Data.Payload = nil
-	m.DataLenght = 0
 	m.Type = 0
 }
 
 func (m *MessageV1) Decode(reader io.Reader) error {
-	rawHeaders := make([]byte, messageV1MinLenBytes)
-	readBytes := 0
-	rb, err := reader.Read(rawHeaders)
+	r := bufio.NewReader(reader)
+	slog.Debug("before read")
+	rawBytes, err := r.ReadBytes(delim)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
+		return fmt.Errorf("read bytes: %w", err)
 	}
-	readBytes += rb
-	m.Type = MessageTypeV1(binary.BigEndian.Uint32(rawHeaders[0:4]))
-	m.DataLenght = binary.BigEndian.Uint32(rawHeaders[5:])
 
-	if m.DataLenght > dataMaxLenBytes {
-		return errInvalidSize
-	} else if m.DataLenght == 0 {
-		return nil
-	}
-	rawBody := make([]byte, m.DataLenght)
-	for {
-		_, err := reader.Read(rawBody)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			break
-		}
-	}
-	d := data{}
-	err = json.Unmarshal(rawBody, &d)
+	slog.Debug("read",
+		slog.String("data", string(rawBytes)),
+		slog.String("data_trimmed", string(rawBytes[:len(rawBytes)-2])),
+
+		slog.Uint64("len", uint64(len(rawBytes))),
+	)
+
+	err = json.Unmarshal(bytes.TrimSuffix(rawBytes, []byte{delim}), m)
 	if err != nil {
 		return fmt.Errorf("Unmarshal: %w", err)
 	}
 
-	m.Data = d
 	return nil
 }
 
+const delim byte = '|'
+
 func (m *MessageV1) Encode() ([]byte, error) {
-	b, err := json.Marshal(m.Data)
+	result, err := json.Marshal(m)
 	if err != nil {
-		return nil, fmt.Errorf("marshal: %w", err)
+		return nil, fmt.Errorf("marshal message: %w", err)
 	}
-	l := len(b)
-	m.DataLenght = uint32(l)
-	result := make([]byte, messageV1MinLenBytes+l)
-	result = binary.BigEndian.AppendUint32(result, uint32(m.Type))
-	result = binary.BigEndian.AppendUint32(result, m.DataLenght)
-	result = append(result, b...)
+	result = append(result, delim)
+
 	return result, nil
 }

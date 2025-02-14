@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -40,7 +41,11 @@ func (p *Protector) getToken() []byte {
 }
 
 func (p *Protector) incDiff() {
-	atomic.AddInt64(&p.currentDifficulty, 1)
+	n := atomic.AddInt64(&p.currentDifficulty, 1)
+	slog.Info(
+		"inc diff",
+		slog.Int64("diff", n),
+	)
 }
 
 func (p *Protector) setDefaultDiff() {
@@ -50,6 +55,9 @@ func (p *Protector) setDefaultDiff() {
 func (p *Protector) limit() {
 	if p.limiter.Allow() {
 		atomic.StoreInt64(&p.currentDifficulty, p.defaultDifficulty)
+		slog.Info(
+			"allow",
+		)
 		return
 	}
 
@@ -57,13 +65,13 @@ func (p *Protector) limit() {
 		return
 	}
 
-	atomic.AddInt64(&p.currentDifficulty, 1)
+	p.incDiff()
 }
 
-func (p *Protector) Verify(solution []byte, difficulty int64) (bool, error) {
+func (p *Protector) Verify(solution []byte) (bool, error) {
 	p.limit()
 
-	result, err := p.verifier.Verify(solution, difficulty)
+	result, err := p.verifier.Verify(solution, p.currentDifficulty)
 	if err != nil {
 		return false, fmt.Errorf("verify: %w", err)
 	}

@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 
 	"pow/internal/pow/hashchash"
 )
 
 type Client struct {
-	c *logConn
-	h *hashchash.Pow
+	c       *logConn
+	h       *hashchash.Pow
+	timeout int64
 }
 
 func (c *Client) Close() error {
@@ -29,6 +31,14 @@ func NewClient(cfg Config, h *hashchash.Pow) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
+	// err = conn.SetKeepAlive(true)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("keep alive: %w", err)
+	// }
+	// err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(cfg.Timeout)))
+	// if err != nil {
+	// 	return nil, fmt.Errorf("set deadline: %w", err)
+	// }
 	return &Client{
 		c: &logConn{r: conn},
 		h: h,
@@ -40,11 +50,13 @@ func (c *Client) GetWisdom(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("get chalange: %w", err)
 	}
+	slog.Debug("got chalange", slog.String("chalange", string(ch)))
 
 	solution, err := c.h.Solve(ctx, ch, d)
 	if err != nil {
 		return "", fmt.Errorf("solve: %w", err)
 	}
+	slog.Debug("solve chalange", slog.String("solution", string(solution)))
 	wisdom, err := c.getWisdom(ctx, solution)
 	if err != nil {
 		return "", fmt.Errorf("get wisdom: %w", err)
@@ -54,17 +66,11 @@ func (c *Client) GetWisdom(ctx context.Context) (string, error) {
 
 func (c *Client) getChallange(ctx context.Context) ([]byte, int64, error) {
 	m := MessageV1{
-		Type:       MessageTypeGetChallengeRequest,
-		DataLenght: 0,
-		Data:       data{},
-	}
-	b, err := m.Encode()
-	if err != nil {
-		return nil, 0, fmt.Errorf("encode: %w", err)
+		Type: MessageTypeGetChallengeRequest,
+		Data: data{},
 	}
 
-	err = write2conn(c.c, m)
-	_, err = c.c.Write(b)
+	err := write2conn(c.c, m)
 	if err != nil {
 		return nil, 0, fmt.Errorf("write resp: %w", err)
 	}
@@ -84,8 +90,7 @@ func (c *Client) getChallange(ctx context.Context) ([]byte, int64, error) {
 
 func (c *Client) getWisdom(ctx context.Context, solution []byte) (string, error) {
 	m := MessageV1{
-		Type:       MessageTypeGetWisdomRequest,
-		DataLenght: 0,
+		Type: MessageTypeGetWisdomRequest,
 		Data: data{
 			Headers: map[string]string{
 				solutionHeader: string(solution),

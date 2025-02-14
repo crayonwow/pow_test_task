@@ -3,12 +3,13 @@
     "expiration": 3600
   },
   "protector": {
-    "limit": 1000,
+    "limit": 2,
     "max_difficulty": 40,
     "default_difficulty": 10
   },
   "tcp_server": {
     "host": "0.0.0.0",
-    "port": "50001"
+    "port": "50001",
+    "time_out": 30
   }
 }

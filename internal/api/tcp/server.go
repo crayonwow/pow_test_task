@@ -1,13 +1,14 @@
 package tcp
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"sync"
+	"time"
 
 	localErr "pow/internal/errors"
 )
@@ -23,6 +24,8 @@ func NewServer(cfg Config, r *Controller) *Server {
 type Server struct {
 	resolver   *Controller
 	host, port string
+	wg         sync.WaitGroup
+	timeout    int64
 }
 
 func write2conn(w io.Writer, m MessageV1) error {
@@ -30,22 +33,26 @@ func write2conn(w io.Writer, m MessageV1) error {
 	if err != nil {
 		return fmt.Errorf("encode: %w", err)
 	}
+
 	_, err = w.Write(b)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
+
 	return nil
 }
 
-func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
+func (s *Server) handleRequest(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
+	defer s.wg.Done()
 	m := MessageV1{}
-	r := bufio.NewReader(conn)
-	w := bufio.NewWriter(conn)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	c := &logConn{r: conn}
 
 	for {
 		m.clear()
-		err := m.Decode(r)
+
+		err := m.Decode(c)
 		if err != nil {
 			slog.Error(
 				"decode",
@@ -54,10 +61,12 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 			return
 		}
 
-		a, err := _resolver.get(m)
+		slog.Debug("getting resolver")
+		a, err := s.resolver.get(m)
 		if err != nil {
 			if errors.Is(err, localErr.ErrNotFound) {
-				continue
+				slog.Debug("controller not found")
+				return
 			}
 
 			slog.Error(
@@ -65,6 +74,7 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 				slog.Uint64("type", uint64(m.Type)),
 				slog.String("error", err.Error()),
 			)
+			return
 		}
 
 		res, err := a.Processor(ctx, m.Data.Payload)
@@ -78,6 +88,7 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 			continue
 		}
 		if a.TypeResponse == MessageTypeEmpty {
+			slog.Debug("no response")
 			continue
 		}
 		m = MessageV1{
@@ -87,7 +98,7 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 				Payload: res,
 			},
 		}
-		err = write2conn(w, m)
+		err = write2conn(c, m)
 		if err != nil {
 			slog.Error(
 				"write response",
@@ -98,8 +109,8 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 			)
 			continue
 		}
-		w.Flush()
 
+		slog.Debug("good")
 		select {
 		case <-ctx.Done():
 			return
@@ -109,25 +120,51 @@ func handleRequest(ctx context.Context, conn net.Conn, _resolver *Controller) {
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", s.host, s.port))
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	defer listener.Close()
+	go func() {
+		select {
+		case <-ctx.Done():
+			cerr := listener.Close()
+			if cerr != nil {
+				slog.Error("close", slog.String("err", err.Error()))
+			}
+			return
+		}
+	}()
 
+	slog.Info(
+		"server started",
+		"addr", fmt.Sprintf("%s:%s", s.host, s.port),
+	)
+
+LOOP:
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				break
+			}
 			return fmt.Errorf("accept: %w", err)
 		}
+		slog.Info("got connection")
 
-		go handleRequest(ctx, conn, s.resolver)
+		s.wg.Add(1)
+		go s.handleRequest(ctx, conn)
 		select {
 		case <-ctx.Done():
-			return nil
+			break LOOP
 		default:
 		}
 	}
+	slog.Debug("waiting")
+	s.wg.Wait()
+	return nil
 }
 
 type logConn struct {
@@ -135,21 +172,28 @@ type logConn struct {
 }
 
 func (lo *logConn) Write(p []byte) (n int, err error) {
-	n, err = lo.Write(p)
-	slog.Debug("read",
+	n, err = lo.r.Write(p)
+	attrs := []any{
 		slog.String("data", string(p)),
-		slog.String("err", err.Error()),
 		slog.Int("n", n),
-	)
-	return
+	}
+	if err != nil {
+		attrs = append(attrs, slog.String("err", err.Error()))
+	}
+
+	slog.Debug("write", attrs...)
+	return n, err
 }
 
 func (lo *logConn) Read(p []byte) (n int, err error) {
 	n, err = lo.r.Read(p)
-	slog.Debug("read",
+	attrs := []any{
 		slog.String("data", string(p)),
-		slog.String("err", err.Error()),
 		slog.Int("n", n),
-	)
-	return
+	}
+	if err != nil {
+		attrs = append(attrs, slog.String("err", err.Error()))
+	}
+	slog.Debug("read", attrs...)
+	return n, err
 }

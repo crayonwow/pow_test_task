@@ -1,6 +1,7 @@
 {
   "tcp_server": {
     "host": "0.0.0.0",
-    "port": "50001"
+    "port": "50001",
+    "time_out": 30
   }
 }
