@@ -40,12 +40,12 @@ func newConfigFromFile(path string) (Config, error) {
 }
 
 func main() {
-	cfgPath := os.Getenv("POW_SERVER_CONFIG_PATH")
+	cfgPath := os.Getenv("POW_CONFIG_PATH")
 	if cfgPath == "" {
 		slog.Error("empty config path")
 		os.Exit(1)
 	}
-	isDebug := os.Getenv("POW_SERVER_DEBUG")
+	isDebug := os.Getenv("POW_DEBUG")
 	if isDebug == "1" {
 		slog.SetLogLoggerLevel(slog.LevelDebug.Level())
 	}
