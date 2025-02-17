@@ -5,15 +5,9 @@ ENV GOOS=linux
 
 COPY . .
 
-RUN go build -o bin -mod=readonly cmd/client/main.go
+RUN go build -o bin -mod=readonly cmd/server/main.go
 
 FROM scratch
-
-ARG POW_DEBUG
-ARG POW_CONFIG_PATH
-
-ENV POW_DEBUG=$POW_DEBUG
-ENV POW_CONFIG_PATH=$POW_CONFIG_PATH
 
 WORKDIR /app
 COPY --from=builder /app/bin /app/bin

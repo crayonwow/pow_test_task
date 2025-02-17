@@ -24,7 +24,5 @@ func Test_hashcash(t *testing.T) {
 
 		verified, err = p.Verify(solution, difficulty)
 		require.Error(t, err)
-
-		t.Log(len(solution))
 	})
 }
