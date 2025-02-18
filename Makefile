@@ -20,3 +20,5 @@ run_server:
 run_client:
 	POW_CONFIG_PATH=$(CLIENT_CONFIG) ./pow_client
 
+run_compose:
+	docker-compose up --build

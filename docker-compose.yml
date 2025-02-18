@@ -1,21 +1,23 @@
 services:
   server:
+    container_name: pow_server
     build:
       context: ./
       dockerfile: ./Dockerfile_server
     restart: always
     environment:
-      POW_DEBUG: 1
+      # POW_DEBUG: 1
       POW_CONFIG_PATH: /app/config.json
 
   client:
+    container_name: pow_client
     build:
       context: ./
       dockerfile: ./Dockerfile_client
-    restart: always
+    # restart: always
     depends_on:
       server:
         condition: service_started
     environment:
-      POW_DEBUG: 1
+      # POW_DEBUG: 1
       POW_CONFIG_PATH: /app/config.json

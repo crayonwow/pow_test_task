@@ -1,0 +1,7 @@
+{
+  "tcp_server": {
+    "host": "pow_server",
+    "port": "50001",
+    "time_out": 30
+  }
+}
